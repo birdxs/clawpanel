@@ -83,7 +83,7 @@ function renderConfig(page, state) {
   el.querySelectorAll('[data-action="remove-fallback"]').forEach(btn => {
     btn.onclick = () => {
       const idx = parseInt(btn.dataset.index)
-      model.fallbacks.splice(idx, 1)
+      if (model.fallbacks) model.fallbacks.splice(idx, 1)
       renderConfig(page, state)
     }
   })

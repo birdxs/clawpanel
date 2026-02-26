@@ -47,6 +47,11 @@
   overflow-y: auto;
 }
 
+.sidebar-footer {
+  padding: var(--space-sm);
+  border-top: 1px solid var(--border-secondary);
+}
+
 .nav-section {
   margin-bottom: var(--space-md);
 }

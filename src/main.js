@@ -3,6 +3,7 @@
  */
 import { registerRoute, initRouter } from './router.js'
 import { renderSidebar } from './components/sidebar.js'
+import { initTheme } from './lib/theme.js'
 
 // 样式
 import './style/variables.css'
@@ -21,6 +22,9 @@ registerRoute('/gateway', () => import('./pages/gateway.js'))
 registerRoute('/mcp', () => import('./pages/mcp.js'))
 registerRoute('/memory', () => import('./pages/memory.js'))
 registerRoute('/deploy', () => import('./pages/deploy.js'))
+
+// 初始化主题
+initTheme()
 
 // 初始化
 const sidebar = document.getElementById('sidebar')
