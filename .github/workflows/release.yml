@@ -142,66 +142,112 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BUILD_RESULT: ${{ needs.build.result }}
+          REPO: ${{ github.repository }}
         run: |
           VERSION="${TAG_NAME#v}"
+          DL="https://github.com/${REPO}/releases/download/${TAG_NAME}"
 
+          # ── 生成分类 Changelog ──
           PREV_TAG=$(git tag --sort=-v:refname | grep -E '^v' | sed -n '2p' || echo "")
           if [ -n "$PREV_TAG" ]; then
-            CHANGELOG=$(git log "${PREV_TAG}..HEAD" --pretty=format:"- %s" --no-merges | head -30 || echo "")
+            RANGE="${PREV_TAG}..HEAD"
             CHANGELOG_HEADER="自 ${PREV_TAG} 以来的变更"
           else
-            CHANGELOG=$(git log --pretty=format:"- %s" --no-merges -20 || echo "")
+            RANGE=""
             CHANGELOG_HEADER="主要变更"
           fi
 
-          # 构建状态标记
+          # 按 conventional commit 前缀分类
+          get_logs() {
+            local prefix="$1"
+            if [ -n "$RANGE" ]; then
+              git log "$RANGE" --pretty=format:"%s" --no-merges | grep -iE "^${prefix}" | sed "s/^${prefix}[:(] */- /" | head -20
+            else
+              git log --pretty=format:"%s" --no-merges -30 | grep -iE "^${prefix}" | sed "s/^${prefix}[:(] */- /" | head -20
+            fi
+          }
+
+          FEATS=$(get_logs "feat")
+          FIXES=$(get_logs "fix")
+          OTHERS=$(
+            if [ -n "$RANGE" ]; then
+              git log "$RANGE" --pretty=format:"%s" --no-merges | grep -ivE "^(feat|fix|style|chore|ci|docs|test|build)" | sed 's/^/- /' | head -10
+            else
+              git log --pretty=format:"%s" --no-merges -30 | grep -ivE "^(feat|fix|style|chore|ci|docs|test|build)" | sed 's/^/- /' | head -10
+            fi
+          )
+
+          CHANGELOG_BODY=""
+          [ -n "$FEATS" ] && CHANGELOG_BODY="${CHANGELOG_BODY}
+### ✨ 新功能
+${FEATS}
+"
+          [ -n "$FIXES" ] && CHANGELOG_BODY="${CHANGELOG_BODY}
+### 🐛 修复
+${FIXES}
+"
+          [ -n "$OTHERS" ] && CHANGELOG_BODY="${CHANGELOG_BODY}
+### 📦 其他
+${OTHERS}
+"
+          [ -z "$CHANGELOG_BODY" ] && CHANGELOG_BODY="
+- 常规更新与优化
+"
+
+          # ── 构建状态 ──
           if [ "$BUILD_RESULT" = "success" ]; then
             STATUS_BADGE="✅ 全部平台构建成功"
           else
-            STATUS_BADGE="⚠️ 部分平台构建失败，请查看 [Actions 日志](https://github.com/${{ github.repository }}/actions)"
+            STATUS_BADGE="⚠️ 部分平台构建失败，请查看 [Actions 日志](https://github.com/${REPO}/actions)"
           fi
 
-          cat > release_body.md << 'ENDOFBODY'
-          PLACEHOLDER
-          ENDOFBODY
-
+          # ── 写入 Release Notes ──
           cat > release_body.md << ENDOFBODY
-          ${STATUS_BADGE}
+${STATUS_BADGE}
 
-          ## 下载安装
+## 📥 下载安装
 
-          根据你的操作系统选择对应安装包：
+根据你的操作系统选择对应安装包，点击文件名即可下载：
 
-          ### macOS
-          | 芯片 | 安装包 |
-          |------|--------|
-          | Apple Silicon (M1/M2/M3/M4) | \`ClawPanel_${VERSION}_aarch64.dmg\` |
-          | Intel | \`ClawPanel_${VERSION}_x64.dmg\` |
+### macOS
+| 芯片 | 安装包 |
+|------|--------|
+| Apple Silicon (M1/M2/M3/M4) | [ClawPanel_${VERSION}_aarch64.dmg](${DL}/ClawPanel_${VERSION}_aarch64.dmg) |
+| Intel | [ClawPanel_${VERSION}_x64.dmg](${DL}/ClawPanel_${VERSION}_x64.dmg) |
 
-          > 首次打开提示"无法验证开发者"：前往**系统设置 → 隐私与安全性**，点击「仍要打开」。
+> **首次打开提示"无法验证开发者"**：前往 **系统设置 → 隐私与安全性**，点击「仍要打开」。
 
-          ### Windows
-          | 格式 | 安装包 |
-          |------|--------|
-          | EXE 安装器（推荐） | \`ClawPanel_${VERSION}_x64-setup.exe\` |
-          | MSI 安装器 | \`ClawPanel_${VERSION}_x64_en-US.msi\` |
+### Windows
+| 格式 | 安装包 |
+|------|--------|
+| EXE 安装器（推荐） | [ClawPanel_${VERSION}_x64-setup.exe](${DL}/ClawPanel_${VERSION}_x64-setup.exe) |
+| MSI 安装器 | [ClawPanel_${VERSION}_x64_en-US.msi](${DL}/ClawPanel_${VERSION}_x64_en-US.msi) |
 
-          ### Linux
-          | 格式 | 安装包 |
-          |------|--------|
-          | AppImage（免安装） | \`ClawPanel_${VERSION}_amd64.AppImage\` |
-          | DEB（Debian/Ubuntu） | \`ClawPanel_${VERSION}_amd64.deb\` |
-          | RPM（Fedora/RHEL） | \`ClawPanel-${VERSION}-1.x86_64.rpm\` |
+### Linux
+| 格式 | 安装包 |
+|------|--------|
+| AppImage（免安装） | [ClawPanel_${VERSION}_amd64.AppImage](${DL}/ClawPanel_${VERSION}_amd64.AppImage) |
+| DEB（Debian/Ubuntu） | [ClawPanel_${VERSION}_amd64.deb](${DL}/ClawPanel_${VERSION}_amd64.deb) |
+| RPM（Fedora/RHEL） | [ClawPanel-${VERSION}-1.x86_64.rpm](${DL}/ClawPanel-${VERSION}-1.x86_64.rpm) |
 
-          ---
+---
 
-          ## ${CHANGELOG_HEADER}
+## 🚀 首次使用
 
-          ${CHANGELOG}
+1. 安装并打开 ClawPanel
+2. 首次运行会自动检测 Node.js 环境和 OpenClaw CLI
+3. 如未安装 OpenClaw，按提示一键安装即可
+4. 安装完成后自动跳转仪表盘，开始使用
 
-          ---
+> **系统要求**：Node.js 18+（推荐 22 LTS）
 
-          完整日志见 [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)
-          ENDOFBODY
+---
+
+## ${CHANGELOG_HEADER}
+${CHANGELOG_BODY}
+---
+
+📖 [项目主页](https://github.com/${REPO}) · 💬 [反馈问题](https://github.com/${REPO}/issues) · 📣 [QQ 群](https://qt.cool/c/OpenClaw)
+ENDOFBODY
 
           gh release edit "$TAG_NAME" --notes-file release_body.md
