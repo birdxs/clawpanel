@@ -381,6 +381,7 @@ mod platform {
     pub async fn is_cli_installed() -> bool {
         Command::new("openclaw")
             .arg("--version")
+            .env("PATH", crate::commands::enhanced_path())
             .output()
             .await
             .map(|o| o.status.success())
@@ -391,14 +392,42 @@ mod platform {
         vec!["ai.openclaw.gateway".to_string()]
     }
 
+    /// 从 openclaw.json 读取 gateway 端口，fallback 到 18789
+    fn read_gateway_port() -> u16 {
+        let config_path = crate::commands::openclaw_dir().join("openclaw.json");
+        if let Ok(content) = std::fs::read_to_string(&config_path) {
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(port) = val
+                    .get("gateway")
+                    .and_then(|g| g.get("port"))
+                    .and_then(|p| p.as_u64())
+                {
+                    if port > 0 && port < 65536 {
+                        return port as u16;
+                    }
+                }
+            }
+        }
+        18789
+    }
+
     pub async fn check_service_status(_uid: u32, _label: &str) -> (bool, Option<u32>) {
+        let port = read_gateway_port();
+        let addr = format!("127.0.0.1:{port}");
         match std::net::TcpStream::connect_timeout(
-            &"127.0.0.1:18789".parse().unwrap(),
+            &addr
+                .parse()
+                .unwrap_or_else(|_| "127.0.0.1:18789".parse().unwrap()),
             std::time::Duration::from_secs(2),
         ) {
             Ok(_) => (true, None),
             Err(_) => {
-                if let Ok(output) = Command::new("openclaw").arg("health").output().await {
+                if let Ok(output) = Command::new("openclaw")
+                    .arg("health")
+                    .env("PATH", crate::commands::enhanced_path())
+                    .output()
+                    .await
+                {
                     let text = String::from_utf8_lossy(&output.stdout);
                     if output.status.success() && !text.contains("not running") {
                         return (true, None);

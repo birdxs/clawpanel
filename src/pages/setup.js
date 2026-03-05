@@ -326,8 +326,9 @@ function bindEvents(page, nodeOk) {
         const config = await api.readOpenclawConfig()
         if (config) {
           let patched = false
-          if (!config.mode) {
-            config.mode = 'local'
+          if (!config.gateway) config.gateway = {}
+          if (!config.gateway.mode) {
+            config.gateway.mode = 'local'
             patched = true
             modal.appendLog('✅ 已设置 Gateway 运行模式为 local')
           }

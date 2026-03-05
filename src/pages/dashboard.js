@@ -79,7 +79,10 @@ async function loadDashboardData(page) {
   // 自愈：补全关键默认值
   if (config) {
     let patched = false
-    if (!config.mode) { config.mode = 'local'; patched = true }
+    if (!config.gateway) config.gateway = {}
+    if (!config.gateway.mode) { config.gateway.mode = 'local'; patched = true }
+    // 修复旧版错误：mode 不应在顶层（OpenClaw 不认识）
+    if (config.mode) { delete config.mode; patched = true }
     if (!config.tools || config.tools.profile !== 'full') {
       config.tools = { profile: 'full', sessions: { visibility: 'all' }, ...(config.tools || {}) }
       config.tools.profile = 'full'

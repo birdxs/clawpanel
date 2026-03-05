@@ -35,7 +35,7 @@ pub fn enhanced_path() -> String {
         })
         .flatten();
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     {
         let mut extra: Vec<String> = vec![
             "/usr/local/bin".into(),
@@ -50,6 +50,58 @@ pub fn enhanced_path() -> String {
         let nvm_versions = home.join(".nvm/versions/node");
         if nvm_versions.is_dir() {
             if let Ok(entries) = std::fs::read_dir(&nvm_versions) {
+                for entry in entries.flatten() {
+                    let bin = entry.path().join("bin");
+                    if bin.is_dir() {
+                        extra.push(bin.to_string_lossy().to_string());
+                    }
+                }
+            }
+        }
+        let mut parts: Vec<&str> = vec![];
+        if let Some(ref cp) = custom_path {
+            parts.push(cp.as_str());
+        }
+        parts.extend(extra.iter().map(|s| s.as_str()));
+        if !current.is_empty() {
+            parts.push(&current);
+        }
+        parts.join(":")
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let mut extra: Vec<String> = vec![
+            "/usr/local/bin".into(),
+            "/usr/bin".into(),
+            "/snap/bin".into(),
+            format!("{}/.local/bin", home.display()),
+            format!("{}/.nvm/current/bin", home.display()),
+            format!("{}/.volta/bin", home.display()),
+            format!("{}/.nodenv/shims", home.display()),
+            format!("{}/.fnm/current/bin", home.display()),
+            format!("{}/n/bin", home.display()),
+        ];
+        // NVM_DIR 环境变量（用户可能自定义了 nvm 安装目录）
+        let nvm_dir = std::env::var("NVM_DIR")
+            .ok()
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| home.join(".nvm"));
+        let nvm_versions = nvm_dir.join("versions/node");
+        if nvm_versions.is_dir() {
+            if let Ok(entries) = std::fs::read_dir(&nvm_versions) {
+                for entry in entries.flatten() {
+                    let bin = entry.path().join("bin");
+                    if bin.is_dir() {
+                        extra.push(bin.to_string_lossy().to_string());
+                    }
+                }
+            }
+        }
+        // nodesource / 手动安装的 Node.js 可能在 /usr/local/lib/nodejs/ 下
+        let nodejs_lib = std::path::Path::new("/usr/local/lib/nodejs");
+        if nodejs_lib.is_dir() {
+            if let Ok(entries) = std::fs::read_dir(nodejs_lib) {
                 for entry in entries.flatten() {
                     let bin = entry.path().join("bin");
                     if bin.is_dir() {

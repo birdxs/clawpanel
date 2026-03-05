@@ -1,18 +1,22 @@
 #!/usr/bin/env bash
 # ClawPanel 本地构建脚本（macOS / Linux）
 # 用法:
-#   ./build.sh           — 构建当前平台安装包（默认）
-#   ./build.sh --debug   — Debug 构建（快，不打包）
-#   ./build.sh --clean   — 清理 Rust 编译缓存后构建
+#   ./build.sh                    — 构建当前平台安装包（默认）
+#   ./build.sh --debug            — Debug 构建（快，不打包）
+#   ./build.sh --clean            — 清理 Rust 编译缓存后构建
+#   ./build.sh --target <triple>  — 指定 Rust target（如 x86_64-unknown-linux-gnu）
 set -euo pipefail
 
 DEBUG=false
 CLEAN=false
+TARGET=""
 
-for arg in "$@"; do
-  case "$arg" in
-    --debug) DEBUG=true ;;
-    --clean) CLEAN=true ;;
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --debug) DEBUG=true; shift ;;
+    --clean) CLEAN=true; shift ;;
+    --target) TARGET="$2"; shift 2 ;;
+    *) shift ;;
   esac
 done
 
@@ -24,17 +28,22 @@ ok()    { echo -e "  ${GREEN}✓ $1${RESET}"; }
 fail()  { echo -e "  ${RED}✗ $1${RESET}"; exit 1; }
 
 echo ""
+ARCH=$(uname -m)
+OS=$(uname)
+
 echo -e "  ${MAGENTA}ClawPanel 构建工具${RESET}"
 echo -e "  ${GRAY}─────────────────────────────────────${RESET}"
-if [[ "$(uname)" == "Darwin" ]]; then
-  ARCH=$(uname -m)
+if [[ "$OS" == "Darwin" ]]; then
   if [[ "$ARCH" == "arm64" ]]; then
     echo -e "  ${GRAY}平台: macOS Apple Silicon (aarch64)${RESET}"
   else
     echo -e "  ${GRAY}平台: macOS Intel (x86_64)${RESET}"
   fi
 else
-  echo -e "  ${GRAY}平台: Linux x86_64${RESET}"
+  echo -e "  ${GRAY}平台: Linux ${ARCH}${RESET}"
+fi
+if [[ -n "$TARGET" ]]; then
+  echo -e "  ${CYAN}目标: $TARGET${RESET}"
 fi
 echo -e "  ${GRAY}跨平台构建 (其他平台) 请推送 tag 触发 GitHub Actions${RESET}"
 echo ""
@@ -62,17 +71,35 @@ if [[ "$(uname)" == "Darwin" ]]; then
 fi
 
 # Linux 额外检测
-if [[ "$(uname)" == "Linux" ]]; then
-  MISSING=()
-  for pkg in libwebkit2gtk-4.1-dev libssl-dev libgtk-3-dev; do
-    if ! dpkg -s "$pkg" &>/dev/null 2>&1; then
-      MISSING+=("$pkg")
+if [[ "$OS" == "Linux" ]]; then
+  if command -v dpkg &>/dev/null; then
+    # Debian/Ubuntu
+    MISSING=()
+    for pkg in libwebkit2gtk-4.1-dev libssl-dev libgtk-3-dev; do
+      if ! dpkg -s "$pkg" &>/dev/null 2>&1; then
+        MISSING+=("$pkg")
+      fi
+    done
+    if [ ${#MISSING[@]} -gt 0 ]; then
+      echo -e "  ${RED}✗ 缺少系统依赖: ${MISSING[*]}${RESET}"
+      echo -e "    运行: sudo apt-get install -y ${MISSING[*]} libayatana-appindicator3-dev librsvg2-dev patchelf"
+      exit 1
     fi
-  done
-  if [ ${#MISSING[@]} -gt 0 ]; then
-    echo -e "  ${RED}✗ 缺少系统依赖: ${MISSING[*]}${RESET}"
-    echo -e "    运行: sudo apt-get install -y ${MISSING[*]} libayatana-appindicator3-dev librsvg2-dev patchelf"
-    exit 1
+  elif command -v rpm &>/dev/null; then
+    # Fedora/RHEL/CentOS
+    MISSING=()
+    for pkg in webkit2gtk4.1-devel openssl-devel gtk3-devel; do
+      if ! rpm -q "$pkg" &>/dev/null 2>&1; then
+        MISSING+=("$pkg")
+      fi
+    done
+    if [ ${#MISSING[@]} -gt 0 ]; then
+      echo -e "  ${RED}✗ 缺少系统依赖: ${MISSING[*]}${RESET}"
+      echo -e "    运行: sudo dnf install -y ${MISSING[*]} libayatana-appindicator-gtk3-devel librsvg2-devel patchelf"
+      exit 1
+    fi
+  else
+    echo -e "  ${GRAY}⚠ 无法自动检测系统依赖，请确保已安装 WebKit2GTK 4.1、OpenSSL、GTK3 开发包${RESET}"
   fi
 fi
 
@@ -98,14 +125,23 @@ fi
 
 START_TIME=$(date +%s)
 
+# 构建参数
+BUILD_ARGS=""
+if [[ -n "$TARGET" ]]; then
+  rustup target add "$TARGET" 2>/dev/null || true
+  BUILD_ARGS="--target $TARGET"
+fi
+
 if [ "$DEBUG" = true ]; then
   step "Debug 构建（不打包安装器）"
-  npm run tauri build -- --debug
+  npm run tauri build -- --debug $BUILD_ARGS
 else
   step "Release 构建"
-  # macOS Apple Silicon: 同时构建 ARM64 + Intel Universal Binary（可选）
-  if [[ "$(uname)" == "Darwin" ]] && [[ "$(uname -m)" == "arm64" ]]; then
-    # 确保 Intel target 已安装
+  if [[ -n "$TARGET" ]]; then
+    echo -e "  ${GRAY}目标: $TARGET${RESET}"
+    npm run tauri build -- $BUILD_ARGS
+  elif [[ "$OS" == "Darwin" ]] && [[ "$ARCH" == "arm64" ]]; then
+    # macOS Apple Silicon: 构建 ARM64 版本
     rustup target add x86_64-apple-darwin 2>/dev/null || true
     echo -e "  ${GRAY}构建 ARM64 版本...${RESET}"
     npm run tauri build -- --target aarch64-apple-darwin
@@ -124,10 +160,18 @@ echo -e "  ${GREEN}✅ 构建成功！耗时 ${ELAPSED}s${RESET}"
 echo -e "  ${GRAY}─────────────────────────────────────${RESET}"
 
 if [ "$DEBUG" = true ]; then
-  echo -e "  可执行文件: src-tauri/target/debug/clawpanel"
+  if [[ -n "$TARGET" ]]; then
+    echo -e "  可执行文件: src-tauri/target/$TARGET/debug/clawpanel"
+  else
+    echo -e "  可执行文件: src-tauri/target/debug/clawpanel"
+  fi
 else
-  BUNDLE_DIR="src-tauri/target/release/bundle"
-  if [[ "$(uname)" == "Darwin" ]]; then
+  if [[ -n "$TARGET" ]]; then
+    BUNDLE_DIR="src-tauri/target/$TARGET/release/bundle"
+  else
+    BUNDLE_DIR="src-tauri/target/release/bundle"
+  fi
+  if [[ "$OS" == "Darwin" ]]; then
     DMG=$(find "$BUNDLE_DIR/dmg" -name "*.dmg" 2>/dev/null | head -1)
     APP=$(find "$BUNDLE_DIR/macos" -name "*.app" -maxdepth 1 2>/dev/null | head -1)
     [ -n "$DMG" ] && echo -e "  DMG: ${GRAY}$DMG${RESET}"

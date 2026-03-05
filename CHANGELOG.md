@@ -5,6 +5,13 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.4.6] - 2026-03-06
+
+### 修复 (Bug Fixes)
+
+- **严重：mode 字段位置错误导致 Gateway 无法启动** — `"mode": "local"` 被错误写入 `openclaw.json` 顶层，OpenClaw 报 `Unrecognized key: "mode"`。正确位置是 `gateway.mode`，已修复所有写入点（init_openclaw_config、dashboard 自愈、setup 安装流程）
+- **旧版配置自动修复** — 仪表盘加载时自动删除错误的顶层 `mode` 字段并移入 `gateway.mode`，已安装用户无需手动编辑
+
 ## [0.4.5] - 2026-03-06
 
 ### 修复 (Bug Fixes)

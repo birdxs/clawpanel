@@ -590,9 +590,9 @@ const handlers = {
     const defaultConfig = {
       "$schema": "https://openclaw.ai/schema/config.json",
       meta: { lastTouchedVersion: "2026.1.1" },
-      mode: "local",
       models: { providers: {} },
       gateway: {
+        mode: "local",
         port: 18789,
         auth: { mode: "none" },
         controlUi: { allowedOrigins: ["*"], allowInsecureAuth: true }
