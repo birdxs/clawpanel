@@ -1224,14 +1224,21 @@
     function playDemoVideo() {
       var v = document.getElementById('demoVideo');
       var o = document.getElementById('videoOverlay');
-      v.play();
+      var p = v.play();
+      if (p !== undefined) { p.catch(function() {}); }
       o.classList.add('hidden');
     }
     function toggleDemoVideo() {
       var v = document.getElementById('demoVideo');
       var o = document.getElementById('videoOverlay');
-      if (v.paused) { v.play(); o.classList.add('hidden'); }
-      else { v.pause(); o.classList.remove('hidden'); }
+      if (v.paused) {
+        var p = v.play();
+        if (p !== undefined) { p.catch(function() {}); }
+        o.classList.add('hidden');
+      } else {
+        v.pause();
+        o.classList.remove('hidden');
+      }
     }
     document.getElementById('demoVideo').addEventListener('ended', function() {
       document.getElementById('videoOverlay').classList.remove('hidden');
