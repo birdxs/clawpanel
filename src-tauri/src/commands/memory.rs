@@ -20,7 +20,13 @@ async fn agent_workspace(agent_id: &str) -> Result<PathBuf, String> {
         .args(["agents", "list", "--json"])
         .output()
         .await
-        .map_err(|e| format!("执行 openclaw 失败: {e}"))?;
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                "OpenClaw CLI 未找到，请确认已安装并重启 ClawPanel。\n如果使用 nvm 安装，请从终端启动 ClawPanel。".to_string()
+            } else {
+                format!("执行 openclaw 失败: {e}")
+            }
+        })?;
 
     if !output.status.success() {
         return Err("获取 Agent 列表失败".into());
