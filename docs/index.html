@@ -34,7 +34,7 @@
     "description": "OpenClaw AI Agent 可视化管理面板，基于 Tauri v2 的跨平台桌面应用。支持仪表盘监控、多模型配置、实时 AI 聊天、记忆管理、Agent 管理、网关配置、内网穿透等功能。",
     "url": "https://claw.qt.cool/",
     "downloadUrl": "https://github.com/qingchencloud/clawpanel/releases/latest",
-    "softwareVersion": "0.5.4",
+    "softwareVersion": "0.5.5",
     "author": {
       "@type": "Organization",
       "name": "晴辰云 QingchenCloud",
@@ -69,9 +69,9 @@
 
     /* ══════════════ Reset & Base ══════════════ */
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-    html { scroll-behavior: smooth; }
+    html { scroll-behavior: auto; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, Roboto, sans-serif; background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; overflow-x: hidden; line-height: 1.6; transition: background 0.3s, color 0.3s; }
-    a { color: inherit; text-decoration: none; } img { max-width: 100%; height: auto; display: block; }
+    a { color: inherit; text-decoration: none; } img { max-width: 100%; height: auto; display: block; } .screenshot-frame img, .gallery-card img, .hero-image-wrap img, .arch-gif-wrap img { aspect-ratio: 16/10; object-fit: cover; background: var(--bg-s); }
     button { font: inherit; cursor: pointer; border: none; background: none; } ul { list-style: none; }
     .mono { font-family: 'SF Mono', 'Fira Code', Consolas, monospace; }
 
@@ -1374,19 +1374,45 @@
       if (e.key === 'Escape') closeDoc();
     });
 
-    /* ── Fix anchor position on load ── */
+    /* ── Robust Anchor Scroll (handles lazy-loaded image layout shift) ── */
+    function smoothScrollTo(target) {
+      if (!target) return;
+      var lastTop = -1;
+      function doScroll() {
+        var top = target.getBoundingClientRect().top + window.scrollY - 120;
+        window.scrollTo({ top: top, behavior: 'smooth' });
+        return top;
+      }
+      lastTop = doScroll();
+      // Re-check position after images may have loaded and shifted layout
+      var retries = [300, 600, 1200];
+      retries.forEach(function(delay) {
+        setTimeout(function() {
+          var newTop = target.getBoundingClientRect().top + window.scrollY - 120;
+          if (Math.abs(newTop - window.scrollY) > 30) {
+            doScroll();
+          }
+        }, delay);
+      });
+    }
+    // Intercept all anchor link clicks
+    document.querySelectorAll('a[href^="#"]').forEach(function(link) {
+      link.addEventListener('click', function(e) {
+        var hash = this.getAttribute('href');
+        if (!hash || hash === '#') return;
+        e.preventDefault();
+        var target = document.querySelector(hash);
+        if (target) {
+          smoothScrollTo(target);
+          history.pushState(null, '', hash);
+        }
+      });
+    });
+    // Fix anchor position on initial page load with hash
     window.addEventListener('load', function() {
       if (window.location.hash) {
-        var hash = window.location.hash;
-        setTimeout(function() {
-          var target = document.querySelector(hash);
-          if (target) {
-            window.scrollTo({
-              top: target.offsetTop - 120,
-              behavior: 'smooth'
-            });
-          }
-        }, 300);
+        var target = document.querySelector(window.location.hash);
+        if (target) setTimeout(function() { smoothScrollTo(target); }, 100);
       }
     });
   </script>

@@ -19,6 +19,7 @@ const DEVICES_DIR = path.join(OPENCLAW_DIR, 'devices')
 const PAIRED_PATH = path.join(DEVICES_DIR, 'paired.json')
 const isWindows = process.platform === 'win32'
 const isMac = process.platform === 'darwin'
+const isLinux = process.platform === 'linux'
 const SCOPES = ['operator.admin', 'operator.approvals', 'operator.pairing', 'operator.read', 'operator.write']
 
 function readBody(req) {
@@ -243,6 +244,126 @@ function readGatewayPort() {
   }
 }
 
+// === Linux 服务管理 ===
+
+/**
+ * 扫描常见 Node 版本管理器路径查找 openclaw 二进制文件。
+ * 解决 systemd 服务环境中 PATH 不含 nvm/volta/fnm 路径的问题。
+ */
+function findOpenclawBin() {
+  try {
+    return execSync('which openclaw 2>/dev/null', { stdio: 'pipe' }).toString().trim()
+  } catch {}
+
+  const home = homedir()
+  const candidates = [
+    '/usr/local/bin/openclaw',
+    '/usr/bin/openclaw',
+    '/snap/bin/openclaw',
+    path.join(home, '.local/bin/openclaw'),
+  ]
+
+  // nvm
+  const nvmDir = process.env.NVM_DIR || path.join(home, '.nvm')
+  const nvmVersions = path.join(nvmDir, 'versions/node')
+  if (fs.existsSync(nvmVersions)) {
+    try {
+      for (const entry of fs.readdirSync(nvmVersions)) {
+        candidates.push(path.join(nvmVersions, entry, 'bin/openclaw'))
+      }
+    } catch {}
+  }
+
+  // volta
+  candidates.push(path.join(home, '.volta/bin/openclaw'))
+
+  // nodenv
+  candidates.push(path.join(home, '.nodenv/shims/openclaw'))
+
+  // fnm
+  const fnmDir = process.env.FNM_DIR || path.join(home, '.local/share/fnm')
+  const fnmVersions = path.join(fnmDir, 'node-versions')
+  if (fs.existsSync(fnmVersions)) {
+    try {
+      for (const entry of fs.readdirSync(fnmVersions)) {
+        candidates.push(path.join(fnmVersions, entry, 'installation/bin/openclaw'))
+      }
+    } catch {}
+  }
+
+  // /usr/local/lib/nodejs（手动安装的 Node.js）
+  const nodejsLib = '/usr/local/lib/nodejs'
+  if (fs.existsSync(nodejsLib)) {
+    try {
+      for (const entry of fs.readdirSync(nodejsLib)) {
+        candidates.push(path.join(nodejsLib, entry, 'bin/openclaw'))
+      }
+    } catch {}
+  }
+
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p
+  }
+  return null
+}
+
+function linuxCheckGateway() {
+  const port = readGatewayPort()
+  // ss 查端口监听
+  try {
+    const out = execSync(`ss -tlnp 'sport = :${port}' 2>/dev/null`, { timeout: 3000 }).toString().trim()
+    const pidMatch = out.match(/pid=(\d+)/)
+    if (pidMatch) return { running: true, pid: parseInt(pidMatch[1]) }
+    if (out.includes(`:${port}`)) return { running: true, pid: null }
+  } catch {}
+  // fallback: lsof
+  try {
+    const out = execSync(`lsof -i :${port} -t 2>/dev/null`, { timeout: 3000 }).toString().trim()
+    if (out) {
+      const pid = parseInt(out.split('\n')[0]) || null
+      return { running: !!pid, pid }
+    }
+  } catch {}
+  // fallback: /proc/net/tcp
+  try {
+    const hexPort = port.toString(16).toUpperCase().padStart(4, '0')
+    const tcp = fs.readFileSync('/proc/net/tcp', 'utf8')
+    if (tcp.includes(`:${hexPort}`)) return { running: true, pid: null }
+  } catch {}
+  return { running: false, pid: null }
+}
+
+function linuxStartGateway() {
+  if (!fs.existsSync(LOGS_DIR)) fs.mkdirSync(LOGS_DIR, { recursive: true })
+  const logPath = path.join(LOGS_DIR, 'gateway.log')
+  const errPath = path.join(LOGS_DIR, 'gateway.err.log')
+  const out = fs.openSync(logPath, 'a')
+  const err = fs.openSync(errPath, 'a')
+
+  const timestamp = new Date().toISOString()
+  fs.appendFileSync(logPath, `\n[${timestamp}] [ClawPanel] Starting Gateway on Linux...\n`)
+
+  const bin = findOpenclawBin() || 'openclaw'
+  const child = spawn(bin, ['gateway'], {
+    detached: true,
+    stdio: ['ignore', out, err],
+    shell: false,
+    cwd: homedir(),
+  })
+  child.unref()
+}
+
+function linuxStopGateway() {
+  const { running, pid } = linuxCheckGateway()
+  if (!running || !pid) throw new Error('Gateway 未运行')
+  try {
+    process.kill(pid, 'SIGTERM')
+  } catch (e) {
+    try { process.kill(pid, 'SIGKILL') } catch {}
+    throw new Error('停止失败: ' + (e.message || e))
+  }
+}
+
 // === API Handlers ===
 
 const handlers = {
@@ -274,7 +395,7 @@ const handlers = {
   // 服务管理
   get_services_status() {
     const label = 'ai.openclaw.gateway'
-    const { running, pid } = isMac ? macCheckService(label) : winCheckGateway()
+    const { running, pid } = isMac ? macCheckService(label) : isLinux ? linuxCheckGateway() : winCheckGateway()
 
     let cliInstalled = false
     if (isMac) {
@@ -283,13 +404,7 @@ const handlers = {
       try { cliInstalled = fs.existsSync(path.join(process.env.APPDATA || '', 'npm', 'openclaw.cmd')) }
       catch { cliInstalled = false }
     } else {
-      // Linux - 使用 which 命令动态查找
-      try {
-        execSync('which openclaw', { stdio: 'pipe' })
-        cliInstalled = true
-      } catch {
-        cliInstalled = false
-      }
+      cliInstalled = !!findOpenclawBin()
     }
 
     return [{ label, running, pid, description: 'OpenClaw Gateway', cli_installed: cliInstalled }]
@@ -297,20 +412,31 @@ const handlers = {
 
   start_service({ label }) {
     if (isMac) { macStartService(label); return true }
+    if (isLinux) { linuxStartGateway(); return true }
     winStartGateway()
     return true
   },
 
   stop_service({ label }) {
     if (isMac) { macStopService(label); return true }
+    if (isLinux) { linuxStopGateway(); return true }
     winStopGateway()
     return true
   },
 
   async restart_service({ label }) {
     if (isMac) { macRestartService(label); return true }
+    if (isLinux) {
+      try { linuxStopGateway() } catch {}
+      for (let i = 0; i < 10; i++) {
+        const { running } = linuxCheckGateway()
+        if (!running) break
+        await new Promise(r => setTimeout(r, 500))
+      }
+      linuxStartGateway()
+      return true
+    }
     try { winStopGateway() } catch {}
-    // 等待进程退出
     for (let i = 0; i < 10; i++) {
       const { running } = winCheckGateway()
       if (!running) break
@@ -324,16 +450,12 @@ const handlers = {
     if (isMac) {
       macRestartService('ai.openclaw.gateway')
       return 'Gateway 已重启'
-    } else if (isWindows) {
-      throw new Error('Windows 请使用 Tauri 桌面应用')
+    } else if (isLinux) {
+      try { linuxStopGateway() } catch {}
+      linuxStartGateway()
+      return 'Gateway 已重启'
     } else {
-      // Linux
-      try {
-        execSync('systemctl restart clawpanel', { stdio: 'inherit' })
-        return 'Gateway 已重启'
-      } catch (err) {
-        throw new Error(`重启失败: ${err.message}`)
-      }
+      throw new Error('Windows 请使用 Tauri 桌面应用')
     }
   },
 
@@ -341,16 +463,12 @@ const handlers = {
     if (isMac) {
       macRestartService('ai.openclaw.gateway')
       return 'Gateway 已重启'
-    } else if (isWindows) {
-      throw new Error('Windows 请使用 Tauri 桌面应用')
+    } else if (isLinux) {
+      try { linuxStopGateway() } catch {}
+      linuxStartGateway()
+      return 'Gateway 已重启'
     } else {
-      // Linux
-      try {
-        execSync('systemctl restart clawpanel', { stdio: 'inherit' })
-        return 'Gateway 已重启'
-      } catch (err) {
-        throw new Error(`重启失败: ${err.message}`)
-      }
+      throw new Error('Windows 请使用 Tauri 桌面应用')
     }
   },
 
