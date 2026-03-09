@@ -24,7 +24,7 @@
 ---
 
 <p align="center">
-  <img src="docs/ai-assistant-demo.gif" width="800" alt="ClawPanel AI 助手演示">
+  <img src="docs/feature-showcase.gif" width="800" alt="ClawPanel 功能全景">
 </p>
 
 <p align="center">
@@ -36,6 +36,37 @@
 ClawPanel 是 [OpenClaw](https://github.com/1186258278/OpenClawChineseTranslation) AI Agent 框架的可视化管理面板。**内置智能 AI 助手**，帮你一键安装 OpenClaw、自动诊断配置、排查问题、修复错误。8 大工具 + 4 种模式 + 交互式问答，从新手到老手都能轻松管理。
 
 > 🌐 **官网**: [claw.qt.cool](https://claw.qt.cool/)  |  📦 **下载**: [GitHub Releases](https://github.com/qingchencloud/clawpanel/releases/latest)
+
+## 社区交流
+
+一群对 AI Agent 充满热情的开发者和玩家，欢迎加入交流。
+
+<table align="center">
+  <tr>
+    <td align="center">
+      <a href="https://qt.cool/c/OpenClaw"><img src="docs/qr-qq.png" width="140" alt="QQ 群二维码"></a><br>
+      <a href="https://qt.cool/c/OpenClaw"><strong>QQ 群</strong></a>
+    </td>
+    <td align="center">
+      <a href="https://qt.cool/c/OpenClawWx"><img src="docs/qr-wechat.png" width="140" alt="微信群二维码"></a><br>
+      <a href="https://qt.cool/c/OpenClawWx"><strong>微信群</strong></a>
+    </td>
+    <td align="center">
+      <a href="https://qt.cool/c/OpenClawDY"><img src="docs/qr-dy.png" width="140" alt="抖音群二维码"></a><br>
+      <a href="https://qt.cool/c/OpenClawDY"><strong>抖音群</strong></a>
+    </td>
+  </tr>
+</table>
+
+<p align="center">
+  <a href="https://discord.gg/U9AttmsNHh"><strong>Discord</strong></a>
+  &nbsp;·&nbsp;
+  <a href="https://yb.tencent.com/gp/i/LsvIw7mdR7Lb"><strong>元宝派</strong></a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/qingchencloud/clawpanel/discussions"><strong>Discussions</strong></a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/qingchencloud/clawpanel/issues/new"><strong>反馈 Issue</strong></a>
+</p>
 
 ## 下载安装
 
@@ -270,10 +301,6 @@ AI 等你回答后才会继续操作，实现真正的**人机协作**。
 
 ## 技术架构
 
-<p align="center">
-  <img src="docs/architecture.gif" width="800" alt="ClawPanel 生态架构">
-</p>
-
 | 层级 | 技术 | 说明 |
 |------|------|------|
 | 前端 | Vanilla JS + Vite | 零框架依赖，轻量快速 |
@@ -458,30 +485,6 @@ npm install -g @qingchencloud/openclaw-zh --registry https://registry.npmmirror.
     </td>
   </tr>
 </table>
-
-## 社区交流
-
-加入社区，交流使用心得、反馈问题、获取最新动态。
-
-<p align="center">
-  <img src="docs/qr-qq.png" width="200" alt="QQ 群二维码">
-  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="docs/qr-wechat.png" width="200" alt="微信群二维码">
-</p>
-<p align="center">
-  <strong>QQ 交流群</strong>
-  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <strong>微信交流群</strong>
-</p>
-
-| 渠道 | 链接 |
-|------|------|
-| QQ 群 | [点击加入](https://qt.cool/c/OpenClaw) |
-| 微信群 | [点击加入](https://qt.cool/c/OpenClawWx) |
-| Discord | [加入 Discord](https://discord.gg/U9AttmsNHh) |
-| 元宝派 | [加入元宝派](https://yb.tencent.com/gp/i/LsvIw7mdR7Lb) |
-| GitHub Discussions | [参与讨论](https://github.com/qingchencloud/clawpanel/discussions) |
-| 反馈 Issue | [提交 Issue](https://github.com/qingchencloud/clawpanel/issues/new) |
 
 ## 贡献
 

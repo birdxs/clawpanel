@@ -357,7 +357,9 @@ mod platform {
         }
     }
 
-    /// 以前台模式 spawn Gateway（不需要管理员权限）
+    const GATEWAY_WINDOW_TITLE: &str = "OpenClaw Gateway";
+
+    /// 在可见终端窗口中启动 Gateway，用户可直接看到输出
     pub async fn start_service_impl(_label: &str) -> Result<(), String> {
         if !is_cli_installed() {
             return Err(
@@ -369,29 +371,20 @@ mod platform {
             return Ok(());
         }
 
-        let log_dir = dirs::home_dir()
-            .unwrap_or_default()
-            .join(".openclaw")
-            .join("logs");
-        std::fs::create_dir_all(&log_dir).ok();
+        let enhanced = crate::commands::enhanced_path();
 
-        let stdout_log = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(log_dir.join("gateway.log"))
-            .map_err(|e| format!("创建日志文件失败: {e}"))?;
+        // 用 cmd /c start 打开新的可见终端窗口运行 Gateway
+        // 父 cmd 用 CREATE_NO_WINDOW 避免自身闪窗，子窗口由 start 创建
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        let start_cmd = format!(
+            "start \"{}\" cmd /k openclaw gateway",
+            GATEWAY_WINDOW_TITLE
+        );
 
-        let stderr_log = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(log_dir.join("gateway.err.log"))
-            .map_err(|e| format!("创建错误日志文件失败: {e}"))?;
-
-        crate::utils::openclaw_command_async()
-            .arg("gateway")
-            .stdin(std::process::Stdio::null())
-            .stdout(stdout_log)
-            .stderr(stderr_log)
+        std::process::Command::new("cmd")
+            .raw_arg(format!("/c {}", start_cmd))
+            .env("PATH", &enhanced)
+            .creation_flags(CREATE_NO_WINDOW)
             .spawn()
             .map_err(|e| format!("启动 Gateway 失败: {e}"))?;
 
@@ -401,26 +394,91 @@ mod platform {
                 return Ok(());
             }
         }
-        Err("Gateway 启动超时，请检查日志".into())
+        Err("Gateway 启动超时，请检查终端窗口中的错误信息".into())
     }
 
+    /// 关闭 Gateway（兼容旧版隐藏进程和新版可见终端）
     pub async fn stop_service_impl(_label: &str) -> Result<(), String> {
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        // 先尝试优雅停止
         let _ = crate::utils::openclaw_command_async()
             .args(["gateway", "stop"])
             .output()
             .await;
-        if check_service_status(0, "").0 {
-            const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+        // 等一下看是否停了
+        for _ in 0..5 {
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            if !check_service_status(0, "").0 {
+                // 关闭残留终端窗口
+                let _ = TokioCommand::new("cmd")
+                    .args(["/c", "taskkill", "/f", "/t", "/fi", &format!("WINDOWTITLE eq {}", GATEWAY_WINDOW_TITLE)])
+                    .creation_flags(CREATE_NO_WINDOW)
+                    .output()
+                    .await;
+                return Ok(());
+            }
+        }
+
+        // 优雅停止失败，按端口查找进程并强杀（最可靠）
+        let port = read_gateway_port();
+        let _ = kill_by_port(port).await;
+
+        // 等端口释放
+        for _ in 0..5 {
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            if !check_service_status(0, "").0 {
+                break;
+            }
+        }
+
+        // 关闭残留终端窗口（仅做清理，不影响进程停止）
+        let _ = TokioCommand::new("cmd")
+            .args(["/c", "taskkill", "/f", "/t", "/fi", &format!("WINDOWTITLE eq {}", GATEWAY_WINDOW_TITLE)])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+            .await;
+
+        Ok(())
+    }
+
+    /// 通过 netstat 查找占用端口的 PID 并强制杀掉（在 Rust 侧解析，避免 cmd for/f 引号问题）
+    async fn kill_by_port(port: u16) -> Result<(), String> {
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        let output = TokioCommand::new("cmd")
+            .args(["/c", "netstat", "-ano"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+            .await
+            .map_err(|e| format!("netstat 失败: {e}"))?;
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let port_pattern = format!(":{port}");
+        let mut pids = std::collections::HashSet::new();
+
+        for line in stdout.lines() {
+            let trimmed = line.trim();
+            if !trimmed.contains("LISTENING") || !trimmed.contains(&port_pattern) {
+                continue;
+            }
+            // 确认是本地地址端口精确匹配（避免 :1878 匹配 :18789）
+            let parts: Vec<&str> = trimmed.split_whitespace().collect();
+            if parts.len() >= 5 {
+                if let Some(addr) = parts.get(1) {
+                    if addr.ends_with(&port_pattern) {
+                        if let Ok(pid) = parts[4].parse::<u32>() {
+                            if pid > 0 {
+                                pids.insert(pid);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        for pid in pids {
             let _ = TokioCommand::new("cmd")
-                .args([
-                    "/c",
-                    "taskkill",
-                    "/f",
-                    "/im",
-                    "node.exe",
-                    "/fi",
-                    "WINDOWTITLE eq openclaw*",
-                ])
+                .args(["/c", "taskkill", "/f", "/t", "/pid", &pid.to_string()])
                 .creation_flags(CREATE_NO_WINDOW)
                 .output()
                 .await;
