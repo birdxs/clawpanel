@@ -1,10 +1,11 @@
 /**
  * 侧边导航栏
  */
-import { navigate, getCurrentRoute } from '../router.js'
+import { navigate, getCurrentRoute, reloadCurrentRoute } from '../router.js'
 import { toggleTheme, getTheme } from '../lib/theme.js'
 import { isOpenclawReady, getActiveInstance, switchInstance, onInstanceChange } from '../lib/app-state.js'
 import { api } from '../lib/tauri-api.js'
+import { toast } from './toast.js'
 import { version as APP_VERSION } from '../../package.json'
 
 const NAV_ITEMS_FULL = [
@@ -24,6 +25,7 @@ const NAV_ITEMS_FULL = [
       { route: '/models', label: '模型配置', icon: 'models' },
       { route: '/agents', label: 'Agent 管理', icon: 'agents' },
       { route: '/gateway', label: 'Gateway', icon: 'gateway' },
+      { route: '/channels', label: '消息渠道', icon: 'channels' },
       { route: '/security', label: '安全设置', icon: 'security' },
     ]
   },
@@ -36,7 +38,6 @@ const NAV_ITEMS_FULL = [
   {
     section: '扩展',
     items: [
-      { route: '/extensions', label: '扩展工具', icon: 'extensions' },
       { route: '/skills', label: 'Skills', icon: 'skills' },
     ]
   },
@@ -66,12 +67,6 @@ const NAV_ITEMS_SETUP = [
   {
     section: '',
     items: [
-      { route: '/extensions', label: '扩展工具', icon: 'extensions' },
-    ]
-  },
-  {
-    section: '',
-    items: [
       { route: '/chat-debug', label: '系统诊断', icon: 'debug' },
       { route: '/about', label: '关于', icon: 'about' },
     ]
@@ -94,6 +89,7 @@ const ICONS = {
   security: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>',
   skills: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>',
   docker: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="11" width="4" height="3" rx=".5"/><rect x="6" y="11" width="4" height="3" rx=".5"/><rect x="11" y="11" width="4" height="3" rx=".5"/><rect x="6" y="7" width="4" height="3" rx=".5"/><rect x="11" y="7" width="4" height="3" rx=".5"/><rect x="16" y="11" width="4" height="3" rx=".5"/><rect x="11" y="3" width="4" height="3" rx=".5"/><path d="M2 17c1 3 4 5 10 5s9-2 10-5"/></svg>',
+  channels: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>',
   debug: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/><circle cx="12" cy="12" r="3"/></svg>',
 }
 
@@ -215,8 +211,11 @@ export function renderSidebar(el) {
         if (id !== getActiveInstance().id) {
           opt.style.opacity = '0.5'
           switchInstance(id).then(() => {
+            const inst = getActiveInstance()
+            const desc = inst.type === 'local' ? '本机' : inst.name
+            toast(`已切换到 ${desc} — 模型配置、Agent 等将管理该实例`, 'success')
             renderSidebar(el)
-            navigate(getCurrentRoute())
+            reloadCurrentRoute()
           })
         }
         return
@@ -281,16 +280,20 @@ async function _toggleInstanceDropdown(sidebarEl) {
     const [data, health] = await Promise.all([api.instanceList(), api.instanceHealthAll()])
     const healthMap = Object.fromEntries((health || []).map(h => [h.id, h]))
     const activeId = getActiveInstance().id
-    let html = ''
+    let html = '<div class="instance-hint">切换后，模型配置、Agent 等页面将管理对应实例</div>'
     for (const inst of data.instances) {
       const h = healthMap[inst.id] || {}
       const active = inst.id === activeId ? ' active' : ''
       const dot = h.online !== false ? 'online' : 'offline'
       const badge = inst.type === 'docker' ? '<span class="instance-badge docker">🦞 龙虾</span>' : inst.type === 'remote' ? '<span class="instance-badge remote">远程</span>' : ''
+      const port = inst.endpoint ? inst.endpoint.match(/:(\d+)/)?.[1] : ''
+      const portTag = port ? `<span class="instance-port">:${port}</span>` : ''
       html += `<div class="instance-option${active}" data-id="${inst.id}">
         <span class="instance-dot ${dot}"></span>
         <span class="instance-opt-name">${_escSidebar(inst.name)}</span>
+        ${portTag}
         ${badge}
+        ${active ? '<span class="instance-active-tag">当前</span>' : ''}
       </div>`
     }
     html += '<div class="instance-divider"></div>'
