@@ -7,7 +7,7 @@ import { toast } from '../components/toast.js'
 import { showConfirm } from '../components/modal.js'
 import { icon } from '../lib/icons.js'
 import { pixelRole, pixelBarracks } from '../lib/pixel-roles.js'
-import { getActiveInstance, switchInstance } from '../lib/app-state.js'
+import { getActiveInstance, switchInstance, isInDocker } from '../lib/app-state.js'
 import { renderSidebar } from '../components/sidebar.js'
 import { reloadCurrentRoute } from '../router.js'
 import { DOCKER_TASK_TIMEOUT_MS, buildDockerDispatchTargets, buildDockerInstanceSwitchContext } from '../lib/docker-tasking.js'
@@ -191,6 +191,67 @@ async function loadClusterOverview(page) {
     if (detail) detail.textContent = `${nodes.length} 节点 · ${runningContainers} 运行 / ${totalContainers} 总计`
   } catch (e) {
     page.querySelector('#cluster-stats').innerHTML = `<span class="cluster-stat" style="color:var(--error,#ef4444)">${icon('x-circle', 12)} Docker 未连接: ${esc(e.message)}</span>`
+
+    // ClawPanel 自身运行在 Docker 容器中时，显示容器内专属指引
+    if (isInDocker()) {
+      page.querySelector('#workers-grid').innerHTML = `
+        <div class="docker-empty">
+          <div class="docker-empty-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48"><rect x="1" y="11" width="4" height="3" rx=".5"/><rect x="6" y="11" width="4" height="3" rx=".5"/><rect x="11" y="11" width="4" height="3" rx=".5"/><rect x="6" y="7" width="4" height="3" rx=".5"/><rect x="11" y="7" width="4" height="3" rx=".5"/><rect x="16" y="11" width="4" height="3" rx=".5"/><rect x="11" y="3" width="4" height="3" rx=".5"/><path d="M2 17c1 3 4 5 10 5s9-2 10-5"/></svg>
+          </div>
+          <div class="docker-empty-title">Docker 宿主机未连接</div>
+          <div class="docker-empty-desc">ClawPanel 当前运行在 Docker 容器中，需要连接宿主机 Docker 守护进程才能管理龙虾军团。</div>
+          <div class="docker-guide-section">
+            <div class="docker-guide-title">${icon('gear', 14)} 连接宿主机 Docker</div>
+            <ol>
+              <li>确保宿主机 Docker 守护进程已开启 TCP 或 Unix Socket 访问</li>
+              <li>挂载 Docker Socket：在 docker-compose.yml 中添加 <code style="font-size:11px">- /var/run/docker.sock:/var/run/docker.sock</code></li>
+              <li>或在「军营」区域添加远程 Docker 节点（TCP 方式：<code style="font-size:11px">http://宿主机IP:2375</code>）</li>
+              <li>重启容器后回到本页面点击「刷新」</li>
+            </ol>
+            <div style="margin-top:8px;font-size:12px;color:var(--text-tertiary)">龙虾军团功能用于在宿主机上部署和管理多个 OpenClaw 容器实例</div>
+          </div>
+        </div>
+      `
+      page.querySelector('#docker-nodes').innerHTML = ''
+      page.querySelector('#docker-containers').innerHTML = ''
+      return
+    }
+
+    const isWin = navigator.userAgent.includes('Windows')
+    const isMacOS = navigator.userAgent.includes('Mac')
+    const installGuide = isWin
+      ? `<div class="docker-guide-section">
+          <div class="docker-guide-title">${icon('download', 14)} Windows 安装 Docker Desktop</div>
+          <ol>
+            <li>下载 <a href="https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe" target="_blank" style="color:var(--accent)">Docker Desktop for Windows</a></li>
+            <li>双击安装包，按提示完成安装（需要 WSL2 支持）</li>
+            <li>安装完成后启动 Docker Desktop，等待右下角鲸鱼图标变绿</li>
+            <li>回到本页面点击「刷新」</li>
+          </ol>
+          <div style="margin-top:8px;font-size:12px;color:var(--text-tertiary)">如已安装，请确认 Docker Desktop 已启动（右下角托盘图标）</div>
+        </div>`
+      : isMacOS
+        ? `<div class="docker-guide-section">
+            <div class="docker-guide-title">${icon('download', 14)} macOS 安装 Docker Desktop</div>
+            <ol>
+              <li>下载 <a href="https://desktop.docker.com/mac/main/arm64/Docker.dmg" target="_blank" style="color:var(--accent)">Docker Desktop for Mac (Apple Silicon)</a> 或 <a href="https://desktop.docker.com/mac/main/amd64/Docker.dmg" target="_blank" style="color:var(--accent)">Intel 版</a></li>
+              <li>拖入 Applications 文件夹，启动 Docker Desktop</li>
+              <li>等待菜单栏鲸鱼图标变为运行状态</li>
+              <li>回到本页面点击「刷新」</li>
+            </ol>
+            <div style="margin-top:8px;font-size:12px;color:var(--text-tertiary)">也可通过 Homebrew 安装：<code style="font-size:11px">brew install --cask docker</code></div>
+          </div>`
+        : `<div class="docker-guide-section">
+            <div class="docker-guide-title">${icon('download', 14)} Linux 安装 Docker</div>
+            <ol>
+              <li>一键安装：<code style="font-size:11px">curl -fsSL https://get.docker.com | sh</code></li>
+              <li>将当前用户加入 docker 组：<code style="font-size:11px">sudo usermod -aG docker $USER</code></li>
+              <li>重新登录后执行 <code style="font-size:11px">docker info</code> 验证</li>
+              <li>回到本页面点击「刷新」</li>
+            </ol>
+            <div style="margin-top:8px;font-size:12px;color:var(--text-tertiary)">如已安装，确认 Docker 守护进程已启动：<code style="font-size:11px">sudo systemctl start docker</code></div>
+          </div>`
     page.querySelector('#workers-grid').innerHTML = `
       <div class="docker-empty">
         <div class="docker-empty-icon">
@@ -198,10 +259,7 @@ async function loadClusterOverview(page) {
         </div>
         <div class="docker-empty-title">Docker 未连接</div>
         <div class="docker-empty-desc">${esc(e.message)}</div>
-        <div class="docker-empty-hint">
-          <p>确保 Docker 已安装并运行：</p>
-          <code>docker info</code>
-        </div>
+        ${installGuide}
       </div>
     `
     page.querySelector('#docker-nodes').innerHTML = ''
@@ -332,7 +390,7 @@ function _renderUnitCard(c, showAdopt) {
     </div>
     ${isRunning && (ports.panel || ports.gateway) ? `
       <div class="unit-links">
-        ${ports.panel ? `<a href="http://${host}:${ports.panel}" target="_blank" rel="noopener" class="unit-link panel">${icon('monitor', 12)} 面板 :${ports.panel}</a>` : ''}
+        ${ports.panel ? `<a href="${location.protocol}//${host}:${ports.panel}" target="_blank" rel="noopener" class="unit-link panel">${icon('monitor', 12)} 面板 :${ports.panel}</a>` : ''}
         ${ports.gateway ? `<span class="unit-link gateway" data-action="quick-chat" data-container-id="${esc(c.id)}" data-node-id="${esc(c.nodeId || '')}" data-name="${esc(c.name)}" title="发送测试消息">${icon('zap', 12)} 通讯 :${ports.gateway}</span>` : ''}
       </div>
     ` : ''}
@@ -1474,7 +1532,7 @@ async function showDeployDialog(page, nodeId) {
 
       // 成功页面
       const host = location.hostname || 'localhost'
-      const panelUrl = `http://${host}:${panelPort}`
+      const panelUrl = `${location.protocol}//${host}:${panelPort}`
       const selectedRole = overlay.querySelector('#dd-role')?.value || 'general'
       const roleInfo = MILITARY.roles[selectedRole] || MILITARY.roles.general
 
@@ -1488,7 +1546,7 @@ async function showDeployDialog(page, nodeId) {
             <button class="btn" data-dismiss>关闭</button>
           </div>
           <div style="margin-top:16px;font-size:11px;color:var(--text-tertiary);font-family:var(--font-mono)">
-            Panel: ${panelUrl} · Gateway: ws://${host}:${gatewayPort}
+            Panel: ${panelUrl} · Gateway: ${location.protocol === 'https:' ? 'wss' : 'ws'}://${host}:${gatewayPort}
           </div>
         </div>
       `
@@ -1543,18 +1601,18 @@ async function showInspectDialog(page, nodeId, containerId) {
         <div class="inspect-section">
           <div class="inspect-section-title">指挥通道</div>
           <div class="inspect-links">
-            ${ports.panel ? `<a href="http://${host}:${ports.panel}" target="_blank" rel="noopener" class="inspect-link-card">
+            ${ports.panel ? `<a href="${location.protocol}//${host}:${ports.panel}" target="_blank" rel="noopener" class="inspect-link-card">
               <span class="inspect-link-icon">${icon('monitor', 20)}</span>
               <span class="inspect-link-text">
                 <strong>指挥台</strong>
-                <span>http://${host}:${ports.panel}</span>
+                <span>${location.protocol}//${host}:${ports.panel}</span>
               </span>
             </a>` : ''}
             ${ports.gateway ? `<div class="inspect-link-card" style="cursor:default;opacity:0.85">
               <span class="inspect-link-icon">${icon('zap', 20)}</span>
               <span class="inspect-link-text">
                 <strong>通讯链路 (WebSocket)</strong>
-                <span>ws://${host}:${ports.gateway}/ws</span>
+                <span>${location.protocol === 'https:' ? 'wss' : 'ws'}://${host}:${ports.gateway}/ws</span>
               </span>
             </div>` : ''}
           </div>

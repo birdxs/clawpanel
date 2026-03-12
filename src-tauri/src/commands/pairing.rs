@@ -115,14 +115,14 @@ fn patch_gateway_origins() {
         return;
     };
 
-    // 仅允许 Tauri 应用 + 本地开发服务器的 origin
-    let origins = serde_json::json!([
-        "tauri://localhost",
-        "https://tauri.localhost",
-        "http://tauri.localhost",
-        "http://localhost:1420",
-        "http://127.0.0.1:1420"
-    ]);
+    // Tauri 应用 + 本地开发服务器必须存在的 origin
+    let required: Vec<String> = vec![
+        "tauri://localhost".into(),
+        "https://tauri.localhost".into(),
+        "http://tauri.localhost".into(),
+        "http://localhost:1420".into(),
+        "http://127.0.0.1:1420".into(),
+    ];
 
     if let Some(obj) = config.as_object_mut() {
         let gateway = obj
@@ -133,7 +133,23 @@ fn patch_gateway_origins() {
                 .entry("controlUi")
                 .or_insert_with(|| serde_json::json!({}));
             if let Some(cui) = control_ui.as_object_mut() {
-                cui.insert("allowedOrigins".to_string(), origins);
+                // 合并：保留用户已有的 origin，追加缺失的 Tauri origin
+                let existing: Vec<String> = cui
+                    .get("allowedOrigins")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|s| s.as_str().map(String::from))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let mut merged = existing;
+                for r in &required {
+                    if !merged.iter().any(|e| e == r) {
+                        merged.push(r.clone());
+                    }
+                }
+                cui.insert("allowedOrigins".to_string(), serde_json::json!(merged));
             }
         }
     }
@@ -174,4 +190,71 @@ pub fn check_pairing_status() -> Result<bool, String> {
         serde_json::from_str(&content).map_err(|e| format!("解析 paired.json 失败: {e}"))?;
 
     Ok(paired.get(device_id).is_some())
+}
+
+async fn run_pairing_command(args: Vec<String>) -> Result<String, String> {
+    let mut cmd = crate::utils::openclaw_command_async();
+    cmd.args(args);
+    let output = cmd
+        .output()
+        .await
+        .map_err(|e| format!("执行 openclaw 失败: {e}"))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let message = match (stdout.is_empty(), stderr.is_empty()) {
+        (false, false) => format!("{stdout}\n{stderr}"),
+        (false, true) => stdout,
+        (true, false) => stderr,
+        (true, true) => String::new(),
+    };
+
+    if output.status.success() {
+        Ok(if message.is_empty() {
+            "操作完成".into()
+        } else {
+            message
+        })
+    } else {
+        Err(if message.is_empty() {
+            format!("命令执行失败: {}", output.status)
+        } else {
+            message
+        })
+    }
+}
+
+#[tauri::command]
+pub async fn pairing_list_channel(channel: String) -> Result<String, String> {
+    let channel = channel.trim();
+    if channel.is_empty() {
+        return Err("channel 不能为空".into());
+    }
+    run_pairing_command(vec!["pairing".into(), "list".into(), channel.into()]).await
+}
+
+#[tauri::command]
+pub async fn pairing_approve_channel(
+    channel: String,
+    code: String,
+    notify: bool,
+) -> Result<String, String> {
+    let channel = channel.trim();
+    let code = code.trim();
+    if channel.is_empty() {
+        return Err("channel 不能为空".into());
+    }
+    if code.is_empty() {
+        return Err("配对码不能为空".into());
+    }
+    let mut args = vec![
+        "pairing".into(),
+        "approve".into(),
+        channel.into(),
+        code.into(),
+    ];
+    if notify {
+        args.push("--notify".into());
+    }
+    run_pairing_command(args).await
 }

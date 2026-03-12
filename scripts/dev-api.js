@@ -153,7 +153,7 @@ function parseCookies(req) {
   const obj = {}
   ;(req.headers.cookie || '').split(';').forEach(pair => {
     const [k, ...v] = pair.trim().split('=')
-    if (k) obj[k] = decodeURIComponent(v.join('='))
+    if (k) try { obj[k] = decodeURIComponent(v.join('=')) } catch (_) { obj[k] = v.join('=') }
   })
   return obj
 }
@@ -479,7 +479,8 @@ function inspectWindowsPortOwners(port = readGatewayPort()) {
   for (const pid of listeningPids) {
     const commandLine = readWindowsProcessCommandLine(pid)
     if (looksLikeGatewayCommandLine(commandLine)) gatewayPids.push(pid)
-    else foreignPids.push(pid)
+    else if (commandLine) foreignPids.push(pid)  // 只有确实读到非 Gateway 命令行时才归为 foreign
+    else gatewayPids.push(pid)  // 命令行读不到时，假定为 Gateway（避免权限问题导致误报）
   }
 
   return {
@@ -991,6 +992,17 @@ const ALWAYS_LOCAL = new Set([
   'assistant_ensure_data_dir', 'assistant_save_image', 'assistant_load_image', 'assistant_delete_image',
 ])
 
+// === 工具函数 ===
+
+// 清理 base URL：去掉尾部斜杠和已知端点路径，防止路径重复
+function _normalizeBaseUrl(raw) {
+  let base = (raw || '').replace(/\/+$/, '')
+  base = base.replace(/\/(api\/chat|api\/generate|api\/tags|api|chat\/completions|completions|responses|messages|models)\/?$/, '')
+  base = base.replace(/\/+$/, '')
+  if (/:11434$/i.test(base)) return `${base}/v1`
+  return base
+}
+
 // === API Handlers ===
 
 const handlers = {
@@ -1022,7 +1034,18 @@ const handlers = {
   // 服务管理
   async get_services_status() {
     const label = 'ai.openclaw.gateway'
-    const { running, pid } = isMac ? macCheckService(label) : isLinux ? linuxCheckGateway() : await winCheckGateway()
+    let { running, pid } = isMac ? macCheckService(label) : isLinux ? linuxCheckGateway() : await winCheckGateway()
+
+    // 通用兜底：进程检测说没运行，但端口实际在监听 → Gateway 已在运行
+    if (!running) {
+      const port = readGatewayPort()
+      const portOpen = await new Promise(resolve => {
+        const sock = net.createConnection(port, '127.0.0.1', () => { sock.destroy(); resolve(true) })
+        sock.on('error', () => resolve(false))
+        sock.setTimeout(2000, () => { sock.destroy(); resolve(false) })
+      })
+      if (portOpen) { running = true }
+    }
 
     let cliInstalled = false
     if (isMac) {
@@ -1096,6 +1119,165 @@ const handlers = {
       return 'Gateway 已重启'
     } else {
       throw new Error('Windows 请使用 Tauri 桌面应用')
+    }
+  },
+
+  // === 消息渠道管理 ===
+
+  list_configured_platforms() {
+    if (!fs.existsSync(CONFIG_PATH)) return []
+    const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'))
+    const channels = cfg.channels || {}
+    return Object.entries(channels).map(([id, val]) => ({
+      id,
+      enabled: val?.enabled !== false,
+    }))
+  },
+
+  read_platform_config({ platform }) {
+    if (!fs.existsSync(CONFIG_PATH)) return { exists: false }
+    const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'))
+    const saved = cfg.channels?.[platform]
+    if (!saved) return { exists: false }
+    const form = {}
+    if (platform === 'qqbot') {
+      const t = saved.token || ''
+      const [appId, ...rest] = t.split(':')
+      if (appId) form.appId = appId
+      if (rest.length) form.appSecret = rest.join(':')
+    } else if (platform === 'telegram') {
+      if (saved.botToken) form.botToken = saved.botToken
+      if (saved.allowFrom) form.allowedUsers = saved.allowFrom.join(', ')
+    } else if (platform === 'discord') {
+      if (saved.token) form.token = saved.token
+      const gid = saved.guilds && Object.keys(saved.guilds)[0]
+      if (gid) form.guildId = gid
+    } else if (platform === 'feishu') {
+      if (saved.appId) form.appId = saved.appId
+      if (saved.appSecret) form.appSecret = saved.appSecret
+      if (saved.domain) form.domain = saved.domain
+    } else {
+      for (const [k, v] of Object.entries(saved)) {
+        if (k !== 'enabled' && typeof v === 'string') form[k] = v
+      }
+    }
+    return { exists: true, values: form }
+  },
+
+  save_messaging_platform({ platform, form }) {
+    if (!fs.existsSync(CONFIG_PATH)) throw new Error('openclaw.json 不存在')
+    const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'))
+    if (!cfg.channels) cfg.channels = {}
+    const entry = { enabled: true }
+    if (platform === 'qqbot') {
+      entry.token = `${form.appId}:${form.appSecret}`
+    } else if (platform === 'telegram') {
+      entry.botToken = form.botToken
+      if (form.allowedUsers) entry.allowFrom = form.allowedUsers.split(',').map(s => s.trim()).filter(Boolean)
+    } else if (platform === 'discord') {
+      entry.token = form.token
+      entry.groupPolicy = 'allowlist'
+      if (form.guildId) {
+        const ck = form.channelId || '*'
+        entry.guilds = { [form.guildId]: { users: ['*'], requireMention: true, channels: { [ck]: { allow: true, requireMention: true } } } }
+      }
+    } else if (platform === 'feishu') {
+      entry.appId = form.appId
+      entry.appSecret = form.appSecret
+      entry.connectionMode = 'websocket'
+      if (form.domain) entry.domain = form.domain
+    } else {
+      Object.assign(entry, form)
+    }
+    cfg.channels[platform] = entry
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2))
+    return { ok: true }
+  },
+
+  remove_messaging_platform({ platform }) {
+    if (!fs.existsSync(CONFIG_PATH)) throw new Error('openclaw.json 不存在')
+    const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'))
+    if (cfg.channels) delete cfg.channels[platform]
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2))
+    return { ok: true }
+  },
+
+  toggle_messaging_platform({ platform, enabled }) {
+    if (!fs.existsSync(CONFIG_PATH)) throw new Error('openclaw.json 不存在')
+    const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'))
+    if (!cfg.channels?.[platform]) throw new Error(`平台 ${platform} 未配置`)
+    cfg.channels[platform].enabled = enabled
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2))
+    return { ok: true }
+  },
+
+  async verify_bot_token({ platform, form }) {
+    if (platform === 'feishu') {
+      const domain = (form.domain || '').trim()
+      const base = domain === 'lark' ? 'https://open.larksuite.com' : 'https://open.feishu.cn'
+      try {
+        const resp = await fetch(`${base}/open-apis/auth/v3/tenant_access_token/internal`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ app_id: form.appId, app_secret: form.appSecret }),
+          signal: AbortSignal.timeout(15000),
+        })
+        const body = await resp.json()
+        if (body.code === 0) return { valid: true, errors: [], details: [`App ID: ${form.appId}`] }
+        return { valid: false, errors: [body.msg || '凭证无效'] }
+      } catch (e) {
+        return { valid: false, errors: [`飞书 API 连接失败: ${e.message}`] }
+      }
+    }
+    if (platform === 'qqbot') {
+      try {
+        const resp = await fetch('https://bots.qq.com/app/getAppAccessToken', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ appId: form.appId, clientSecret: form.appSecret }),
+          signal: AbortSignal.timeout(15000),
+        })
+        const body = await resp.json()
+        if (body.access_token) return { valid: true, errors: [], details: [`AppID: ${form.appId}`] }
+        return { valid: false, errors: [body.message || body.msg || '凭证无效'] }
+      } catch (e) {
+        return { valid: false, errors: [`QQ Bot API 连接失败: ${e.message}`] }
+      }
+    }
+    if (platform === 'telegram') {
+      try {
+        const resp = await fetch(`https://api.telegram.org/bot${form.botToken}/getMe`, { signal: AbortSignal.timeout(15000) })
+        const body = await resp.json()
+        if (body.ok) return { valid: true, errors: [], details: [`Bot: @${body.result?.username}`] }
+        return { valid: false, errors: [body.description || 'Token 无效'] }
+      } catch (e) {
+        return { valid: false, errors: [`Telegram API 连接失败: ${e.message}`] }
+      }
+    }
+    if (platform === 'discord') {
+      try {
+        const resp = await fetch('https://discord.com/api/v10/users/@me', {
+          headers: { Authorization: `Bot ${form.token}` },
+          signal: AbortSignal.timeout(15000),
+        })
+        if (resp.status === 401) return { valid: false, errors: ['Bot Token 无效'] }
+        const body = await resp.json()
+        if (body.bot) return { valid: true, errors: [], details: [`Bot: @${body.username}`] }
+        return { valid: false, errors: ['提供的 Token 不属于 Bot 账号'] }
+      } catch (e) {
+        return { valid: false, errors: [`Discord API 连接失败: ${e.message}`] }
+      }
+    }
+    return { valid: true, warnings: ['该平台暂不支持在线校验'] }
+  },
+
+  install_qqbot_plugin() {
+    const bin = findOpenclawBin() || 'openclaw'
+    try {
+      execSync(`${bin} plugins install @sliverp/qqbot@latest`, { timeout: 60000, cwd: homedir() })
+      return '安装成功'
+    } catch (e) {
+      throw new Error('QQBot 插件安装失败: ' + (e.message || e))
     }
   },
 
@@ -2120,39 +2302,70 @@ const handlers = {
     return { current, latest: null, update_available: false, source: 'chinese' }
   },
 
-  // 清理 base URL：去掉尾部斜杠和已知端点路径，防止路径重复
-  _normalizeBaseUrl(raw) {
-    let base = raw.replace(/\/+$/, '')
-    base = base.replace(/\/(chat\/completions|completions|responses|messages|models)\/?$/, '')
-    return base.replace(/\/+$/, '')
-  },
-
   // 模型测试
-  async test_model({ baseUrl, apiKey, modelId }) {
-    const url = `${this._normalizeBaseUrl(baseUrl)}/chat/completions`
-    const body = JSON.stringify({
-      model: modelId,
-      messages: [{ role: 'user', content: 'Hi' }],
-      max_tokens: 16,
-      stream: false
-    })
+  async test_model({ baseUrl, apiKey, modelId, apiType = 'openai-completions' }) {
+    const type = ['anthropic', 'anthropic-messages'].includes(apiType) ? 'anthropic-messages'
+      : apiType === 'google-gemini' ? 'google-gemini'
+      : 'openai-completions'
+    let base = _normalizeBaseUrl(baseUrl)
+    if (type === 'anthropic-messages' && !/\/v1$/i.test(base)) base += '/v1'
+    else if (type === 'openai-completions' && !/\/v1$/i.test(base)) base += '/v1'
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 30000)
     try {
-      const headers = { 'Content-Type': 'application/json' }
-      if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`
-      const resp = await fetch(url, { method: 'POST', headers, body, signal: controller.signal })
+      let resp
+      if (type === 'anthropic-messages') {
+        const headers = { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01' }
+        if (apiKey) headers['x-api-key'] = apiKey
+        resp = await fetch(`${base}/messages`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            model: modelId,
+            messages: [{ role: 'user', content: 'Hi' }],
+            max_tokens: 16,
+          }),
+          signal: controller.signal
+        })
+      } else if (type === 'google-gemini') {
+        resp = await fetch(`${base}/models/${encodeURIComponent(modelId)}:generateContent?key=${encodeURIComponent(apiKey || '')}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'Hi' }] }] }),
+          signal: controller.signal
+        })
+      } else {
+        const headers = { 'Content-Type': 'application/json' }
+        if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`
+        resp = await fetch(`${base}/chat/completions`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            model: modelId,
+            messages: [{ role: 'user', content: 'Hi' }],
+            max_tokens: 16,
+            stream: false
+          }),
+          signal: controller.signal
+        })
+      }
       clearTimeout(timeout)
       if (!resp.ok) {
         const text = await resp.text()
         let msg = `HTTP ${resp.status}`
-        try { msg = JSON.parse(text).error?.message || msg } catch {}
-        throw new Error(msg)
+        try {
+          const parsed = JSON.parse(text)
+          msg = parsed.error?.message || parsed.message || msg
+        } catch {}
+        if (resp.status === 401 || resp.status === 403) throw new Error(msg)
+        return `⚠ 连接正常（API 返回 ${resp.status}，部分模型对简单测试不兼容，不影响实际使用）`
       }
       const data = await resp.json()
+      const anthropicText = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('')
+      const geminiText = data.candidates?.[0]?.content?.parts?.map?.(p => p.text).filter(Boolean).join('') || ''
       const content = data.choices?.[0]?.message?.content
       const reasoning = data.choices?.[0]?.message?.reasoning_content
-      return content || (reasoning ? `[reasoning] ${reasoning}` : '（无回复内容）')
+      return anthropicText || geminiText || content || (reasoning ? `[reasoning] ${reasoning}` : '（无回复内容）')
     } catch (e) {
       clearTimeout(timeout)
       if (e.name === 'AbortError') throw new Error('请求超时 (30s)')
@@ -2160,18 +2373,43 @@ const handlers = {
     }
   },
 
-  async list_remote_models({ baseUrl, apiKey }) {
-    const url = `${this._normalizeBaseUrl(baseUrl)}/models`
-    const headers = {}
-    if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`
+  async list_remote_models({ baseUrl, apiKey, apiType = 'openai-completions' }) {
+    const type = ['anthropic', 'anthropic-messages'].includes(apiType) ? 'anthropic-messages'
+      : apiType === 'google-gemini' ? 'google-gemini'
+      : 'openai-completions'
+    let base = _normalizeBaseUrl(baseUrl)
+    if (type === 'anthropic-messages' && !/\/v1$/i.test(base)) base += '/v1'
+    else if (type === 'openai-completions' && !/\/v1$/i.test(base)) base += '/v1'
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 15000)
     try {
-      const resp = await fetch(url, { headers, signal: controller.signal })
+      let resp
+      if (type === 'anthropic-messages') {
+        const headers = { 'anthropic-version': '2023-06-01' }
+        if (apiKey) headers['x-api-key'] = apiKey
+        resp = await fetch(`${base}/models`, { headers, signal: controller.signal })
+      } else if (type === 'google-gemini') {
+        resp = await fetch(`${base}/models?key=${encodeURIComponent(apiKey || '')}`, { signal: controller.signal })
+      } else {
+        const headers = {}
+        if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`
+        resp = await fetch(`${base}/models`, { headers, signal: controller.signal })
+      }
       clearTimeout(timeout)
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => '')
+        let msg = `HTTP ${resp.status}`
+        try {
+          const parsed = JSON.parse(text)
+          msg = parsed.error?.message || parsed.message || msg
+        } catch {}
+        throw new Error(msg)
+      }
       const data = await resp.json()
-      const ids = (data.data || []).map(m => m.id).sort()
+      const ids = (data.data || []).map(m => m.id)
+        .concat((data.models || []).map(m => (m.name || '').replace(/^models\//, '')))
+        .filter(Boolean)
+        .sort()
       if (!ids.length) throw new Error('该服务商返回了空的模型列表')
       return ids
     } catch (e) {

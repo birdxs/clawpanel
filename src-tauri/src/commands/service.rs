@@ -1,7 +1,9 @@
 /// 服务管理命令
 /// macOS: launchctl + LaunchAgents plist
 /// Windows: openclaw CLI + 进程检测
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+#[cfg(target_os = "windows")]
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -18,11 +20,13 @@ fn description_map() -> HashMap<&'static str, &'static str> {
     ])
 }
 
+#[cfg(target_os = "windows")]
 fn looks_like_gateway_command_line(command_line: &str) -> bool {
     let text = command_line.to_ascii_lowercase();
     text.contains("openclaw") && text.contains("gateway")
 }
 
+#[cfg(target_os = "windows")]
 fn parse_listening_pids_from_netstat(stdout: &str, port: u16) -> Vec<u32> {
     let port_pattern = format!(":{port}");
     let mut pids = HashSet::new();
@@ -724,7 +728,13 @@ mod platform {
                 Some(command_line) if super::looks_like_gateway_command_line(&command_line) => {
                     gateway_pids.push(pid);
                 }
-                _ => foreign_pids.push(pid),
+                Some(command_line) if !command_line.is_empty() => {
+                    foreign_pids.push(pid);
+                }
+                _ => {
+                    // 命令行读不到时，假定为 Gateway（避免权限问题导致误报）
+                    gateway_pids.push(pid);
+                }
             }
         }
 
@@ -1076,7 +1086,7 @@ pub async fn restart_service(label: String) -> Result<(), String> {
     result
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "windows"))]
 mod tests {
     use super::{looks_like_gateway_command_line, parse_listening_pids_from_netstat};
 

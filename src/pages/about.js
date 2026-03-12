@@ -402,19 +402,14 @@ async function checkHotUpdate(cards, panelVersion) {
         }
       })
     } else if (!info.compatible) {
-      meta.innerHTML = '<span style="color:var(--text-tertiary)">需要更新完整安装包</span> <a class="btn btn-secondary btn-sm" href="https://github.com/qingchencloud/clawpanel/releases" target="_blank" rel="noopener" style="padding:2px 8px;font-size:var(--font-size-xs)">下载</a>'
+      meta.innerHTML = '<span style="color:var(--text-tertiary)">需要更新完整安装包</span> <a class="btn btn-primary btn-sm" href="https://claw.qt.cool" target="_blank" rel="noopener" style="padding:2px 8px;font-size:var(--font-size-xs)">前往官网下载</a> <a class="btn btn-secondary btn-sm" href="https://github.com/qingchencloud/clawpanel/releases" target="_blank" rel="noopener" style="padding:2px 8px;font-size:var(--font-size-xs)">GitHub</a>'
     } else {
       meta.innerHTML = '<span style="color:var(--success)">已是最新</span>'
     }
   } catch (err) {
     const meta = el()
     if (!meta) return
-    const msg = String(err?.message || err || '')
-    if (msg.includes('403') || msg.includes('404') || msg.includes('rate limit')) {
-      meta.innerHTML = '<span style="color:var(--text-tertiary)">暂无法检查更新</span>'
-    } else {
-      meta.innerHTML = '<span style="color:var(--text-tertiary)">检查更新失败</span>'
-    }
+    meta.innerHTML = `<span style="color:var(--text-tertiary)">暂无法检查更新</span> <a class="btn btn-secondary btn-sm" href="https://claw.qt.cool" target="_blank" rel="noopener" style="padding:2px 8px;font-size:var(--font-size-xs)">前往官网下载</a>`
   }
 }
 
@@ -446,12 +441,17 @@ function renderCommunity(page) {
         <img src="https://qt.cool/c/OpenClawDY/qr.png" alt="抖音交流群" style="width:140px;height:140px;border-radius:var(--radius-md);border:1px solid var(--border-primary);object-fit:contain;background:#fff">
         <div style="font-size:var(--font-size-sm);margin-top:8px;color:var(--text-secondary)">抖音交流群</div>
       </div>
+      <div style="text-align:center">
+        <img src="https://qt.cool/c/feishu/qr.png" alt="飞书交流群" style="width:140px;height:140px;border-radius:var(--radius-md);border:1px solid var(--border-primary);object-fit:contain;background:#fff">
+        <div style="font-size:var(--font-size-sm);margin-top:8px;color:var(--text-secondary)">飞书交流群</div>
+      </div>
       <div style="flex:1;min-width:200px;display:flex;flex-direction:column;gap:8px;padding-top:4px">
         <div style="font-size:var(--font-size-sm);color:var(--text-secondary)">扫码或点击链接加入交流群，反馈问题、获取帮助</div>
         <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">
           <a class="btn btn-primary btn-sm" href="https://qt.cool/c/OpenClaw" target="_blank" rel="noopener">加入 QQ 群</a>
           <a class="btn btn-primary btn-sm" href="https://qt.cool/c/OpenClawWx" target="_blank" rel="noopener">加入微信群</a>
           <a class="btn btn-primary btn-sm" href="https://qt.cool/c/OpenClawDY" target="_blank" rel="noopener">加入抖音群</a>
+          <a class="btn btn-primary btn-sm" href="https://qt.cool/c/feishu" target="_blank" rel="noopener">加入飞书群</a>
           <a class="btn btn-secondary btn-sm" href="https://yb.tencent.com/gp/i/LsvIw7mdR7Lb" target="_blank" rel="noopener">元宝派社群</a>
         </div>
         <div style="font-size:var(--font-size-xs);color:var(--text-tertiary);margin-top:8px">
@@ -477,6 +477,7 @@ const PROJECTS = [
     name: 'ClawPanel',
     desc: 'OpenClaw 可视化管理面板，Tauri v2 桌面应用',
     url: 'https://github.com/qingchencloud/clawpanel',
+    gitee: 'https://gitee.com/QtCodeCreators/clawpanel',
   },
   {
     name: 'ClawApp',
@@ -502,6 +503,7 @@ function renderProjects(page) {
       </div>
       <div class="service-actions">
         <a class="btn btn-secondary btn-sm" href="${p.url}" target="_blank" rel="noopener">GitHub</a>
+        ${p.gitee ? `<a class="btn btn-secondary btn-sm" href="${p.gitee}" target="_blank" rel="noopener">国内镜像</a>` : ''}
       </div>
     </div>
   `).join('')
@@ -525,6 +527,9 @@ function renderContribute(page) {
       <a class="btn btn-secondary btn-sm" href="https://github.com/qingchencloud/clawpanel/pulls" target="_blank" rel="noopener">提交 PR</a>
       <a class="btn btn-secondary btn-sm" href="https://github.com/qingchencloud/clawpanel/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">贡献指南</a>
       <a class="btn btn-secondary btn-sm" href="https://github.com/qingchencloud/clawpanel/issues" target="_blank" rel="noopener">查看 Issues</a>
+    </div>
+    <div style="margin-top:8px;font-size:var(--font-size-xs);color:var(--text-tertiary)">
+      国内镜像：<a href="https://gitee.com/QtCodeCreators/clawpanel" target="_blank" rel="noopener" style="color:var(--accent)">Gitee</a>（无法访问 GitHub 时可用）
     </div>
   `
 }
