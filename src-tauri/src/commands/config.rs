@@ -1923,7 +1923,6 @@ pub fn check_git() -> Result<Value, String> {
 /// 尝试自动安装 Git（Windows: winget; macOS: xcode-select; Linux: apt/yum）
 #[tauri::command]
 pub async fn auto_install_git(app: tauri::AppHandle) -> Result<String, String> {
-    use std::io::{BufRead, BufReader};
     use std::process::Stdio;
     use tauri::Emitter;
 
@@ -1931,6 +1930,7 @@ pub async fn auto_install_git(app: tauri::AppHandle) -> Result<String, String> {
 
     #[cfg(target_os = "windows")]
     {
+        use std::io::{BufRead, BufReader};
         // 尝试 winget
         let _ = app.emit("upgrade-log", "尝试使用 winget 安装 Git...");
         let mut child = Command::new("winget")
@@ -1990,14 +1990,15 @@ pub async fn auto_install_git(app: tauri::AppHandle) -> Result<String, String> {
             let _ = app.emit("upgrade-log", "Git 安装已触发，请在弹出的窗口中确认安装。");
             return Ok("已触发 xcode-select 安装，请在弹窗中确认".to_string());
         }
-        return Err(
+        Err(
             "xcode-select 安装失败，请手动安装 Xcode Command Line Tools 或 brew install git"
                 .to_string(),
-        );
+        )
     }
 
     #[cfg(target_os = "linux")]
     {
+        use std::io::{BufRead, BufReader};
         // 检测包管理器
         let pkg_mgr = if Command::new("apt-get")
             .arg("--version")
@@ -2074,7 +2075,7 @@ pub async fn auto_install_git(app: tauri::AppHandle) -> Result<String, String> {
             let _ = app.emit("upgrade-log", "Git 安装成功！");
             return Ok("Git 已安装".to_string());
         }
-        return Err("Git 安装失败，请手动执行: sudo apt install git".to_string());
+        Err("Git 安装失败，请手动执行: sudo apt install git".to_string())
     }
 }
 
