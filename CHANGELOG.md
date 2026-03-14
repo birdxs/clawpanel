@@ -5,6 +5,40 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.8.6] - 2026-03-13
+
+### 修复 (Fixes)
+
+- **切换汉化版 SSH 认证失败** — npm install 子进程现通过 `GIT_CONFIG_COUNT` 环境变量强制注入 HTTPS insteadOf 规则，确保即使全局 git config 未生效（Windows PATH 问题等），SSH→HTTPS 替换也能在 npm 子进程中工作
+- **#58 定时任务触发错误** — 修复 `fetchJobs` 中 `id: j.name || j.id` 导致自定义名称的任务无法触发（感谢 @axdlee）
+- **#63 systemd 部署找不到 OpenClaw** — 文档改用 `$(which node)` 动态路径 + `Environment=PATH` 确保 systemd 服务能找到 Node.js 和 OpenClaw CLI
+- **#64 Skills 页面 JSON 解析错误** — `openclaw skills list --json` 输出混入 Node.js 警告时不再报错，新增 `extract_json` 提取有效 JSON 对象
+- **CI rustfmt/clippy 跨平台警告** — 修复 `unused_imports`（BufRead/BufReader 移入 cfg block）、`needless_return`×3、`and_then→map`
+
+### 改进 (Improvements)
+
+- **错误诊断更精准** — SSH 错误诊断改用更严格的匹配（`permission denied`、`publickey`、`host key verification`），不再被 npm verbose 日志中的 `git@` 字样误触发
+- **README 文档增强** — 新增「快速上手」4 步指南、Web 版部署指南（含 Nginx 配置示例）、消息渠道配置指南、FAQ 扩充 6 个常见问题
+
+## [0.8.5] - 2026-03-13
+
+### 修复 (Fixes)
+
+- **Web 模式渠道配对报错** — 补全 `pairing_list_channel` / `pairing_approve_channel` 后端 handler，飞书/钉钉配对审批不再报"未实现的命令"
+- **Web 模式插件状态报错** — 补全 `get_channel_plugin_status` / `install_channel_plugin` handler，QQ 机器人等插件保存不再 404
+- **Web 模式初始设置缺失** — 补全 `check_git` / `auto_install_git` / `configure_git_https` / `guardian_status` / `invalidate_path_cache` handler，Web 部署全流程可用
+
+### 改进 (Improvements)
+
+- **Web 模式 handler 100% 覆盖** — dev-api.js 现已覆盖 tauri-api.js 中所有命令，Web 部署不再出现"未实现的命令"错误
+
+## [0.8.4] - 2026-03-13
+
+### 改进 (Improvements)
+
+- **移除龙虾军团入口** — 精简产品功能，移除 Docker 集群管理页面及相关军事化主题 UI，聚焦"简单好用"的核心体验
+- **前端瘦身** — 删除 3 个专用模块（docker.js / docker-tasking.js / pixel-roles.js），pages.css 减少约 700 行，tauri-api.js 清理 30 个未使用 API 方法
+
 ## [0.8.3] - 2026-03-12
 
 ### 修复 (Fixes)

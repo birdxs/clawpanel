@@ -91,12 +91,14 @@ pub fn run() {
             config::check_panel_update,
             config::read_panel_config,
             config::write_panel_config,
+            config::test_proxy,
             config::get_npm_registry,
             config::set_npm_registry,
             config::check_git,
             config::auto_install_git,
             config::configure_git_https,
             config::invalidate_path_cache,
+            config::get_status_summary,
             // 设备密钥 + Gateway 握手
             device::create_connect_frame,
             // 设备配对

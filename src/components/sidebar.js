@@ -26,6 +26,7 @@ const NAV_ITEMS_FULL = [
       { route: '/agents', label: 'Agent 管理', icon: 'agents' },
       { route: '/gateway', label: 'Gateway', icon: 'gateway' },
       { route: '/channels', label: '消息渠道', icon: 'channels' },
+      { route: '/communication', label: '通信与自动化', icon: 'settings' },
       { route: '/security', label: '安全设置', icon: 'security' },
     ]
   },
@@ -34,6 +35,7 @@ const NAV_ITEMS_FULL = [
     items: [
       { route: '/memory', label: '记忆文件', icon: 'memory' },
       { route: '/cron', label: '定时任务', icon: 'clock' },
+      { route: '/usage', label: '使用情况', icon: 'bar-chart' },
     ]
   },
   {
@@ -43,14 +45,9 @@ const NAV_ITEMS_FULL = [
     ]
   },
   {
-    section: '龙虾军团',
-    items: [
-      { route: '/docker', label: '龙虾军团', icon: 'docker' },
-    ]
-  },
-  {
     section: '',
     items: [
+      { route: '/settings', label: '面板设置', icon: 'settings' },
       { route: '/chat-debug', label: '系统诊断', icon: 'debug' },
       { route: '/about', label: '关于', icon: 'about' },
     ]
@@ -68,6 +65,7 @@ const NAV_ITEMS_SETUP = [
   {
     section: '',
     items: [
+      { route: '/settings', label: '面板设置', icon: 'settings' },
       { route: '/chat-debug', label: '系统诊断', icon: 'debug' },
       { route: '/about', label: '关于', icon: 'about' },
     ]
@@ -89,9 +87,10 @@ const ICONS = {
   assistant: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/><path d="M18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z"/></svg>',
   security: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>',
   skills: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>',
-  docker: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="11" width="4" height="3" rx=".5"/><rect x="6" y="11" width="4" height="3" rx=".5"/><rect x="11" y="11" width="4" height="3" rx=".5"/><rect x="6" y="7" width="4" height="3" rx=".5"/><rect x="11" y="7" width="4" height="3" rx=".5"/><rect x="16" y="11" width="4" height="3" rx=".5"/><rect x="11" y="3" width="4" height="3" rx=".5"/><path d="M2 17c1 3 4 5 10 5s9-2 10-5"/></svg>',
   channels: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>',
   clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+  'bar-chart': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>',
+  settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>',
   debug: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/><circle cx="12" cy="12" r="3"/></svg>',
 }
 
@@ -287,7 +286,7 @@ async function _toggleInstanceDropdown(sidebarEl) {
       const h = healthMap[inst.id] || {}
       const active = inst.id === activeId ? ' active' : ''
       const dot = h.online !== false ? 'online' : 'offline'
-      const badge = inst.type === 'docker' ? '<span class="instance-badge docker">🦞 龙虾</span>' : inst.type === 'remote' ? '<span class="instance-badge remote">远程</span>' : ''
+      const badge = inst.type === 'docker' ? '<span class="instance-badge docker">Docker</span>' : inst.type === 'remote' ? '<span class="instance-badge remote">远程</span>' : ''
       const port = inst.endpoint ? inst.endpoint.match(/:(\d+)/)?.[1] : ''
       const portTag = port ? `<span class="instance-port">:${port}</span>` : ''
       html += `<div class="instance-option${active}" data-id="${inst.id}">

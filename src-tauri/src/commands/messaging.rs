@@ -482,9 +482,7 @@ pub async fn toggle_messaging_platform(
 #[tauri::command]
 pub async fn verify_bot_token(platform: String, form: Value) -> Result<Value, String> {
     let form_obj = form.as_object().ok_or("表单数据格式错误")?;
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
+    let client = super::build_http_client(std::time::Duration::from_secs(15), None)
         .map_err(|e| format!("HTTP 客户端初始化失败: {}", e))?;
 
     match platform.as_str() {
@@ -915,16 +913,24 @@ fn is_plugin_builtin(plugin_id: &str) -> bool {
         }
         #[cfg(target_os = "macos")]
         {
-            dirs.push(PathBuf::from("/opt/homebrew/lib/node_modules/@qingchencloud/openclaw-zh"));
+            dirs.push(PathBuf::from(
+                "/opt/homebrew/lib/node_modules/@qingchencloud/openclaw-zh",
+            ));
             dirs.push(PathBuf::from("/opt/homebrew/lib/node_modules/openclaw"));
-            dirs.push(PathBuf::from("/usr/local/lib/node_modules/@qingchencloud/openclaw-zh"));
+            dirs.push(PathBuf::from(
+                "/usr/local/lib/node_modules/@qingchencloud/openclaw-zh",
+            ));
             dirs.push(PathBuf::from("/usr/local/lib/node_modules/openclaw"));
         }
         #[cfg(target_os = "linux")]
         {
-            dirs.push(PathBuf::from("/usr/local/lib/node_modules/@qingchencloud/openclaw-zh"));
+            dirs.push(PathBuf::from(
+                "/usr/local/lib/node_modules/@qingchencloud/openclaw-zh",
+            ));
             dirs.push(PathBuf::from("/usr/local/lib/node_modules/openclaw"));
-            dirs.push(PathBuf::from("/usr/lib/node_modules/@qingchencloud/openclaw-zh"));
+            dirs.push(PathBuf::from(
+                "/usr/lib/node_modules/@qingchencloud/openclaw-zh",
+            ));
             dirs.push(PathBuf::from("/usr/lib/node_modules/openclaw"));
         }
         dirs
@@ -1219,8 +1225,14 @@ pub async fn install_qqbot_plugin(app: tauri::AppHandle) -> Result<String, Strin
     };
     if all_output.contains("native binding") || all_output.contains("Failed to start CLI") {
         let _ = app.emit("plugin-log", "");
-        let _ = app.emit("plugin-log", "⚠️ 检测到 OpenClaw CLI 原生依赖问题（native binding 缺失）");
-        let _ = app.emit("plugin-log", "这是 OpenClaw 的上游依赖问题，非 QQBot 插件本身的问题。");
+        let _ = app.emit(
+            "plugin-log",
+            "⚠️ 检测到 OpenClaw CLI 原生依赖问题（native binding 缺失）",
+        );
+        let _ = app.emit(
+            "plugin-log",
+            "这是 OpenClaw 的上游依赖问题，非 QQBot 插件本身的问题。",
+        );
         let _ = app.emit("plugin-log", "请在终端手动执行以下命令重装 OpenClaw：");
         let _ = app.emit("plugin-log", "  npm i -g @qingchencloud/openclaw-zh@latest --registry https://registry.npmmirror.com");
         let _ = app.emit("plugin-log", "重装完成后再回来安装 QQBot 插件。");
